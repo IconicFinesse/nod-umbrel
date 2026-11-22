@@ -1,0 +1,65 @@
+name: build-images
+
+# Builds Nod's three images (server, browser, workspace) from a pinned
+# upstream commit of n8n-io/nod and pushes them to GHCR for the
+# iconicfinesse-nod Umbrel app. To update: change UPSTREAM_SHA (and the
+# image tag) and re-run.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build.yml"
+      - "UPSTREAM_SHA"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  UPSTREAM_REPO: n8n-io/nod
+  UPSTREAM_SHA: 5336545210527358f135ec990002b5c6af2d8775
+  IMAGE_TAG: 5336545
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: server
+            dockerfile: deployment/self-host/Dockerfile
+            image: ghcr.io/iconicfinesse/nod-server
+          - name: browser
+            dockerfile: Dockerfile.browser
+            image: ghcr.io/iconicfinesse/nod-browser
+          - name: workspace
+            dockerfile: Dockerfile.workspace
+            image: ghcr.io/iconicfinesse/nod-workspace
+    steps:
+      - name: Check out upstream nod at the pinned commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ env.UPSTREAM_SHA }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the ${{ matrix.name }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ matrix.image }}:${{ env.IMAGE_TAG }}
+            ${{ matrix.image }}:latest
